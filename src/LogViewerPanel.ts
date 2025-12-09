@@ -11,6 +11,12 @@ export class LogViewerPanel {
     private _disposables: vscode.Disposable[] = [];
     private _fileWatcher: fs.FSWatcher | undefined;
     private _rootWatcher: fs.FSWatcher | undefined;
+    
+    // Debouncing for file changes
+    private _pendingFileChanges: Set<string> = new Set();
+    private _fileChangeTimer: NodeJS.Timeout | undefined;
+    private _sessionRefreshTimer: NodeJS.Timeout | undefined;
+    private static readonly DEBOUNCE_DELAY = 150; // ms
 
     public static createOrShow(extensionUri: vscode.Uri) {
         console.log('LogViewerPanel.createOrShow called');
@@ -191,12 +197,13 @@ export class LogViewerPanel {
                 }
                 
                 if (filename && this._matchesFilePattern(path.basename(filename))) {
-                    // Notify webview to request updated content
+                    // Add to pending changes (debounced)
                     const logName = path.basename(filename);
-                    this._panel.webview.postMessage({ command: 'fileChanged', filename: logName });
+                    this._pendingFileChanges.add(logName);
+                    this._scheduleFileChangeFlush();
                 }
-                // Refresh sessions in case new folders were added
-                this._sendSessions();
+                // Debounce session refresh too
+                this._scheduleSessionRefresh();
             });
 
             this._fileWatcher.on('error', () => {
@@ -220,8 +227,49 @@ export class LogViewerPanel {
         }
     }
 
+    private _scheduleFileChangeFlush() {
+        if (this._fileChangeTimer) {
+            clearTimeout(this._fileChangeTimer);
+        }
+        this._fileChangeTimer = setTimeout(() => {
+            this._flushFileChanges();
+        }, LogViewerPanel.DEBOUNCE_DELAY);
+    }
+
+    private _flushFileChanges() {
+        if (this._pendingFileChanges.size === 0) {
+            return;
+        }
+        // Send all pending file changes as a batch
+        const files = Array.from(this._pendingFileChanges);
+        this._pendingFileChanges.clear();
+        
+        // Send batch notification to webview
+        this._panel.webview.postMessage({ 
+            command: 'filesChanged', 
+            filenames: files 
+        });
+    }
+
+    private _scheduleSessionRefresh() {
+        if (this._sessionRefreshTimer) {
+            clearTimeout(this._sessionRefreshTimer);
+        }
+        this._sessionRefreshTimer = setTimeout(() => {
+            this._sendSessions();
+        }, LogViewerPanel.DEBOUNCE_DELAY * 2); // Slightly longer delay for sessions
+    }
+
     public dispose() {
         LogViewerPanel.currentPanel = undefined;
+
+        // Clear pending timers
+        if (this._fileChangeTimer) {
+            clearTimeout(this._fileChangeTimer);
+        }
+        if (this._sessionRefreshTimer) {
+            clearTimeout(this._sessionRefreshTimer);
+        }
 
         // Close file watchers
         if (this._fileWatcher) {
@@ -931,9 +979,21 @@ export class LogViewerPanel {
                                 break;
                                 
                             case 'fileChanged':
-                                // Auto-refresh changed log
+                                // Auto-refresh changed log (single file - legacy)
                                 if (allLogs.includes(message.filename)) {
                                     vscode.postMessage({ command: 'getLogContent', session: currentSession, logName: message.filename });
+                                }
+                                break;
+                            
+                            case 'filesChanged':
+                                // Auto-refresh changed logs (batch - debounced)
+                                if (message.filenames && Array.isArray(message.filenames)) {
+                                    // Only refresh the active log to avoid overwhelming updates
+                                    // Other logs will be refreshed when selected
+                                    const changedFiles = message.filenames;
+                                    if (activeLog && changedFiles.includes(activeLog)) {
+                                        vscode.postMessage({ command: 'getLogContent', session: currentSession, logName: activeLog });
+                                    }
                                 }
                                 break;
                                 

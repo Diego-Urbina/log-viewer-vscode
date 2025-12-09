@@ -64,6 +64,14 @@ export class LogViewerPanel {
                         vscode.window.showErrorMessage(message.text);
                         return;
                     case 'getSessions':
+                        // Send initial settings along with sessions
+                        const cfg = this._getConfig();
+                        this._panel.webview.postMessage({
+                            command: 'updateSettings',
+                            showLineNumbers: cfg.showLineNumbers,
+                            wrapLines: cfg.wrapLines,
+                            tailMode: cfg.tailMode
+                        });
                         this._sendSessions();
                         return;
                     case 'getLogsForSession':
@@ -80,18 +88,77 @@ export class LogViewerPanel {
 
         // Setup file watcher for auto-refresh
         this._setupFileWatcher();
+
+        // Listen for configuration changes
+        vscode.workspace.onDidChangeConfiguration(e => {
+            if (e.affectsConfiguration('logViewer.logDirectory') || e.affectsConfiguration('logViewer.filePattern')) {
+                this._setupFileWatcher();
+                // Notify webview to reset state when directory changes
+                this._panel.webview.postMessage({ command: 'resetState' });
+                this._sendSessions();
+            }
+            if (e.affectsConfiguration('logViewer.autoRefresh')) {
+                this._setupFileWatcher();
+                // If autoRefresh was enabled, refresh all logs
+                if (this._getConfig().autoRefresh) {
+                    this._panel.webview.postMessage({ command: 'refreshAllLogs' });
+                }
+            }
+            if (e.affectsConfiguration('logViewer.showLineNumbers') || 
+                e.affectsConfiguration('logViewer.wrapLines') ||
+                e.affectsConfiguration('logViewer.tailMode')) {
+                const cfg = this._getConfig();
+                this._panel.webview.postMessage({ 
+                    command: 'updateSettings',
+                    showLineNumbers: cfg.showLineNumbers,
+                    wrapLines: cfg.wrapLines,
+                    tailMode: cfg.tailMode
+                });
+            }
+        }, null, this._disposables);
     }
 
-    private _currentSession: string = '';
+    private _getConfig() {
+        const config = vscode.workspace.getConfiguration('logViewer');
+        return {
+            logDirectory: config.get<string>('logDirectory') || 'log',
+            autoRefresh: config.get<boolean>('autoRefresh') ?? true,
+            showLineNumbers: config.get<boolean>('showLineNumbers') ?? true,
+            filePattern: config.get<string>('filePattern') || '*.log',
+            wrapLines: config.get<boolean>('wrapLines') ?? false,
+            tailMode: config.get<boolean>('tailMode') ?? false,
+            stripAnsiCodes: config.get<boolean>('stripAnsiCodes') ?? true
+        };
+    }
+
+    private _stripAnsiCodes(text: string): string {
+        // Remove ANSI escape codes (colors, formatting, cursor control, etc.)
+        // eslint-disable-next-line no-control-regex
+        return text.replace(/\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])/g, '');
+    }
+
+    private _matchesFilePattern(filename: string): boolean {
+        const patterns = this._getConfig().filePattern;
+        // Support multiple patterns separated by comma
+        const patternList = patterns.split(',').map(p => p.trim()).filter(p => p);
+        
+        return patternList.some(pattern => {
+            // Convert glob pattern to regex
+            const regexPattern = pattern
+                .replace(/\./g, '\\.')
+                .replace(/\*/g, '.*')
+                .replace(/\?/g, '.');
+            const regex = new RegExp(`^${regexPattern}$`, 'i');
+            return regex.test(filename);
+        });
+    }
+
+    private _getLogDirectoryName(): string {
+        return this._getConfig().logDirectory;
+    }
 
     private _setupFileWatcher() {
-        if (!vscode.workspace.workspaceFolders) {
-            return;
-        }
-        const rootPath = vscode.workspace.workspaceFolders[0].uri.fsPath;
-        const logDir = path.join(rootPath, 'log');
-
-        // Clean up existing watchers
+        // Clean up existing watchers first
         if (this._fileWatcher) {
             this._fileWatcher.close();
             this._fileWatcher = undefined;
@@ -100,6 +167,18 @@ export class LogViewerPanel {
             this._rootWatcher.close();
             this._rootWatcher = undefined;
         }
+
+        // Skip if autoRefresh is disabled
+        if (!this._getConfig().autoRefresh) {
+            return;
+        }
+
+        if (!vscode.workspace.workspaceFolders) {
+            return;
+        }
+        const rootPath = vscode.workspace.workspaceFolders[0].uri.fsPath;
+        const logDirName = this._getLogDirectoryName();
+        const logDir = path.join(rootPath, logDirName);
 
         if (fs.existsSync(logDir)) {
             // Watch the log directory for changes
@@ -111,7 +190,7 @@ export class LogViewerPanel {
                     return;
                 }
                 
-                if (filename && filename.endsWith('.log')) {
+                if (filename && this._matchesFilePattern(path.basename(filename))) {
                     // Notify webview to request updated content
                     const logName = path.basename(filename);
                     this._panel.webview.postMessage({ command: 'fileChanged', filename: logName });
@@ -126,8 +205,8 @@ export class LogViewerPanel {
             });
         } else {
             this._rootWatcher = fs.watch(rootPath, (eventType, filename) => {
-                if (filename === 'log') {
-                    const logDirPath = path.join(rootPath, 'log');
+                if (filename === logDirName) {
+                    const logDirPath = path.join(rootPath, logDirName);
                     if (fs.existsSync(logDirPath) && fs.statSync(logDirPath).isDirectory()) {
                         this._setupFileWatcher();
                         this._sendSessions();
@@ -451,6 +530,10 @@ export class LogViewerPanel {
                         color: var(--vscode-descriptionForeground);
                         font-style: italic;
                     }
+                    
+                    /* Settings-based styles */
+                    #log-content.hide-line-numbers .line-number { display: none; }
+                    #log-content.no-wrap .line-content { white-space: pre; word-break: normal; }
                 </style>
             </head>
             <body>
@@ -512,6 +595,7 @@ export class LogViewerPanel {
                     let allLogs = previousState.allLogs || []; // Array of log names
                     let logContents = previousState.logContents || {}; // { logName: content }
                     let logFilters = previousState.logFilters || {}; // { logName: { text: '', severities: [...] } }
+                    let tailMode = false; // Will be updated from settings
 
                     // Get current log's filter settings
                     function getLogFilter(logName) {
@@ -555,10 +639,18 @@ export class LogViewerPanel {
                         const filter = getLogFilter(activeLog);
                         const lines = content.split('\\n');
                         const searchText = filter.text.toLowerCase();
+                        let lastSeverityClass = ''; // Track severity for multi-line messages
                         
                         const filteredLines = lines.map((line, index) => {
                             const lineNum = index + 1;
-                            const severityClass = getSeverityClass(line);
+                            let severityClass = getSeverityClass(line);
+                            
+                            // If no severity found, inherit from previous line
+                            if (!severityClass && lastSeverityClass) {
+                                severityClass = lastSeverityClass;
+                            } else if (severityClass) {
+                                lastSeverityClass = severityClass;
+                            }
                             
                             // Filter by severity
                             if (severityClass && !filter.severities.includes(severityClass)) {
@@ -590,12 +682,31 @@ export class LogViewerPanel {
 
                     function getSeverityClass(line) {
                         const upperLine = line.toUpperCase();
-                        if (/\\b(ERROR|ERR|FATAL|CRITICAL|EXCEPTION)\\b/.test(upperLine)) return 'log-error';
-                        if (/\\b(WARN|WARNING)\\b/.test(upperLine)) return 'log-warn';
-                        if (/\\b(INFO)\\b/.test(upperLine)) return 'log-info';
-                        if (/\\b(DEBUG|DBG)\\b/.test(upperLine)) return 'log-debug';
-                        if (/\\b(TRACE|TRC)\\b/.test(upperLine)) return 'log-trace';
-                        if (/\\b(VERBOSE|VERB|VRB)\\b/.test(upperLine)) return 'log-verbose';
+                        
+                        // Check for pipe-delimited format first (e.g., "|INFO |" or "|ERROR|")
+                        const pipeMatch = upperLine.match(/\\|\\s*(ERROR|ERR|FATAL|CRITICAL|EXCEPTION|WARN|WARNING|INFO|DEBUG|DBG|TRACE|TRC|VERBOSE|VERB|VRB)\\s*\\|/);
+                        if (pipeMatch) {
+                            const level = pipeMatch[1];
+                            if (/ERROR|ERR|FATAL|CRITICAL|EXCEPTION/.test(level)) return 'log-error';
+                            if (/WARN|WARNING/.test(level)) return 'log-warn';
+                            if (level === 'INFO') return 'log-info';
+                            if (/DEBUG|DBG/.test(level)) return 'log-debug';
+                            if (/TRACE|TRC/.test(level)) return 'log-trace';
+                            if (/VERBOSE|VERB|VRB/.test(level)) return 'log-verbose';
+                        }
+                        
+                        // Check for bracket format (e.g., "[INFO]", "[ERROR]")
+                        const bracketMatch = upperLine.match(/\\[\\s*(ERROR|ERR|FATAL|CRITICAL|EXCEPTION|WARN|WARNING|INFO|DEBUG|DBG|TRACE|TRC|VERBOSE|VERB|VRB)\\s*\\]/);
+                        if (bracketMatch) {
+                            const level = bracketMatch[1];
+                            if (/ERROR|ERR|FATAL|CRITICAL|EXCEPTION/.test(level)) return 'log-error';
+                            if (/WARN|WARNING/.test(level)) return 'log-warn';
+                            if (level === 'INFO') return 'log-info';
+                            if (/DEBUG|DBG/.test(level)) return 'log-debug';
+                            if (/TRACE|TRC/.test(level)) return 'log-trace';
+                            if (/VERBOSE|VERB|VRB/.test(level)) return 'log-verbose';
+                        }
+                        
                         return '';
                     }
 
@@ -812,6 +923,9 @@ export class LogViewerPanel {
                                 logContents[message.logName] = message.content;
                                 if (activeLog === message.logName) {
                                     logContent.innerHTML = formatLogContent(message.content);
+                                    if (tailMode) {
+                                        logContent.scrollTop = logContent.scrollHeight;
+                                    }
                                 }
                                 saveState();
                                 break;
@@ -821,6 +935,49 @@ export class LogViewerPanel {
                                 if (allLogs.includes(message.filename)) {
                                     vscode.postMessage({ command: 'getLogContent', session: currentSession, logName: message.filename });
                                 }
+                                break;
+                                
+                            case 'resetState':
+                                // Reset all state when log directory changes
+                                currentSession = '';
+                                activeLog = '';
+                                pinnedLogs = [];
+                                allLogs = [];
+                                logContents = {};
+                                logFilters = {};
+                                currentLogTitle.textContent = 'Select a log';
+                                logContent.innerHTML = '<div class="empty-state">Select a log from the sidebar</div>';
+                                updateFilterUI();
+                                renderSidebar();
+                                saveState();
+                                break;
+                                
+                            case 'updateSettings':
+                                // Update settings
+                                if (typeof message.showLineNumbers === 'boolean') {
+                                    if (message.showLineNumbers) {
+                                        logContent.classList.remove('hide-line-numbers');
+                                    } else {
+                                        logContent.classList.add('hide-line-numbers');
+                                    }
+                                }
+                                if (typeof message.wrapLines === 'boolean') {
+                                    if (message.wrapLines) {
+                                        logContent.classList.remove('no-wrap');
+                                    } else {
+                                        logContent.classList.add('no-wrap');
+                                    }
+                                }
+                                if (typeof message.tailMode === 'boolean') {
+                                    tailMode = message.tailMode;
+                                }
+                                break;
+                                
+                            case 'refreshAllLogs':
+                                // Refresh content of all loaded logs
+                                allLogs.forEach(logName => {
+                                    vscode.postMessage({ command: 'getLogContent', session: currentSession, logName: logName });
+                                });
                                 break;
                         }
                     });
@@ -841,7 +998,8 @@ export class LogViewerPanel {
             return;
         }
         const rootPath = vscode.workspace.workspaceFolders[0].uri.fsPath;
-        const logDir = path.join(rootPath, 'log');
+        const logDirName = this._getLogDirectoryName();
+        const logDir = path.join(rootPath, logDirName);
 
         if (!fs.existsSync(logDir)) {
             this._panel.webview.postMessage({ command: 'setSessions', sessions: [], hasRootLogs: false });
@@ -856,8 +1014,8 @@ export class LogViewerPanel {
             .map(e => e.name)
             .sort((a, b) => b.localeCompare(a)); // Newest first (ISO8601 sorts correctly)
         
-        // Check if there are .log files directly in log/
-        const hasRootLogs = entries.some(e => e.isFile() && e.name.endsWith('.log'));
+        // Check if there are log files directly in log/
+        const hasRootLogs = entries.some(e => e.isFile() && this._matchesFilePattern(e.name));
 
         this._panel.webview.postMessage({ command: 'setSessions', sessions, hasRootLogs });
     }
@@ -867,9 +1025,10 @@ export class LogViewerPanel {
             return;
         }
         const rootPath = vscode.workspace.workspaceFolders[0].uri.fsPath;
+        const logDirName = this._getLogDirectoryName();
         const sessionDir = session === '__root__' 
-            ? path.join(rootPath, 'log')
-            : path.join(rootPath, 'log', session);
+            ? path.join(rootPath, logDirName)
+            : path.join(rootPath, logDirName, session);
 
         if (!fs.existsSync(sessionDir)) {
             this._panel.webview.postMessage({ command: 'setSessionLogs', logs: [], session });
@@ -877,10 +1036,9 @@ export class LogViewerPanel {
         }
 
         const logs = fs.readdirSync(sessionDir)
-            .filter(file => file.endsWith('.log'))
+            .filter(file => this._matchesFilePattern(file))
             .sort((a, b) => a.localeCompare(b));
 
-        this._currentSession = session;
         this._panel.webview.postMessage({ command: 'setSessionLogs', logs, session });
     }
 
@@ -889,12 +1047,16 @@ export class LogViewerPanel {
             return;
         }
         const rootPath = vscode.workspace.workspaceFolders[0].uri.fsPath;
+        const logDirName = this._getLogDirectoryName();
         const logPath = session === '__root__'
-            ? path.join(rootPath, 'log', logName)
-            : path.join(rootPath, 'log', session, logName);
+            ? path.join(rootPath, logDirName, logName)
+            : path.join(rootPath, logDirName, session, logName);
 
         if (fs.existsSync(logPath)) {
-            const content = fs.readFileSync(logPath, 'utf8');
+            let content = fs.readFileSync(logPath, 'utf8');
+            if (this._getConfig().stripAnsiCodes) {
+                content = this._stripAnsiCodes(content);
+            }
             this._panel.webview.postMessage({ 
                 command: 'setLogContent', 
                 content: content,

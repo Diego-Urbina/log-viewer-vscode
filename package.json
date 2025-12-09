@@ -23,12 +23,54 @@
                 "command": "log-viewer.close",
                 "title": "Log Viewer: Close"
             }
-        ]
+        ],
+        "configuration": {
+            "title": "Log Viewer",
+            "properties": {
+                "logViewer.logDirectory": {
+                    "type": "string",
+                    "default": "log",
+                    "description": "The directory containing log files (relative to workspace root)."
+                },
+                "logViewer.autoRefresh": {
+                    "type": "boolean",
+                    "default": true,
+                    "description": "Automatically refresh log content when files change."
+                },
+                "logViewer.showLineNumbers": {
+                    "type": "boolean",
+                    "default": true,
+                    "description": "Show line numbers in log content."
+                },
+                "logViewer.filePattern": {
+                    "type": "string",
+                    "default": "*.log",
+                    "description": "Glob pattern for log files (e.g., '*.log', '*.txt'). Use comma to separate multiple patterns."
+                },
+                "logViewer.wrapLines": {
+                    "type": "boolean",
+                    "default": false,
+                    "description": "Wrap long lines in log content."
+                },
+                "logViewer.tailMode": {
+                    "type": "boolean",
+                    "default": false,
+                    "description": "Auto-scroll to the end when new log content is loaded."
+                },
+                "logViewer.stripAnsiCodes": {
+                    "type": "boolean",
+                    "default": true,
+                    "description": "Remove ANSI escape codes (terminal color codes) from log output."
+                }
+            }
+        }
     },
     "scripts": {
         "vscode:prepublish": "npm run compile",
         "compile": "tsc -p ./",
         "watch": "tsc -watch -p ./",
+        "clean": "rm -rf out",
+        "rebuild": "npm run clean && npm run compile",
         "pretest": "npm run compile && npm run lint",
         "lint": "eslint src --ext ts",
         "test": "node ./out/test/runTest.js"

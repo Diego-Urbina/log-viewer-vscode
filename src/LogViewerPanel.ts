@@ -720,6 +720,68 @@ export class LogViewerPanel {
                         color: var(--vscode-descriptionForeground);
                         font-style: italic;
                     }
+                    
+                    /* Help Panel */
+                    .help-overlay {
+                        display: none;
+                        position: fixed;
+                        top: 0;
+                        left: 0;
+                        right: 0;
+                        bottom: 0;
+                        background: rgba(0, 0, 0, 0.5);
+                        z-index: 300;
+                    }
+                    .help-overlay.visible { display: flex; align-items: center; justify-content: center; }
+                    .help-panel {
+                        background: var(--vscode-editorWidget-background, #252526);
+                        border: 1px solid var(--vscode-editorWidget-border, #454545);
+                        border-radius: 8px;
+                        padding: 20px 24px;
+                        max-width: 400px;
+                        box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+                    }
+                    .help-title {
+                        font-size: 16px;
+                        font-weight: bold;
+                        margin-bottom: 16px;
+                        display: flex;
+                        align-items: center;
+                        justify-content: space-between;
+                    }
+                    .help-close {
+                        background: transparent;
+                        border: none;
+                        color: var(--vscode-foreground);
+                        cursor: pointer;
+                        font-size: 18px;
+                        opacity: 0.7;
+                        padding: 0 4px;
+                    }
+                    .help-close:hover { opacity: 1; }
+                    .help-section {
+                        margin-bottom: 12px;
+                    }
+                    .help-section-title {
+                        font-size: 12px;
+                        font-weight: bold;
+                        color: var(--vscode-descriptionForeground);
+                        text-transform: uppercase;
+                        margin-bottom: 6px;
+                    }
+                    .help-row {
+                        display: flex;
+                        justify-content: space-between;
+                        padding: 4px 0;
+                        font-size: 13px;
+                    }
+                    .help-key {
+                        background: var(--vscode-button-secondaryBackground);
+                        padding: 2px 8px;
+                        border-radius: 4px;
+                        font-family: var(--vscode-editor-font-family), monospace;
+                        font-size: 12px;
+                    }
                 </style>
             </head>
             <body>
@@ -772,6 +834,40 @@ export class LogViewerPanel {
                         <div class="quick-picker-list" id="quick-picker-list"></div>
                     </div>
                 </div>
+                
+                <!-- Help Panel (? or F1) -->
+                <div class="help-overlay" id="help-overlay">
+                    <div class="help-panel">
+                        <div class="help-title">
+                            <span>Keyboard Shortcuts</span>
+                            <button class="help-close" id="help-close" title="Close (Esc)">×</button>
+                        </div>
+                        <div class="help-section">
+                            <div class="help-section-title">Navigation</div>
+                            <div class="help-row"><span>Go to filter bar</span><span class="help-key">Ctrl+L</span></div>
+                            <div class="help-row"><span>Search in log</span><span class="help-key">Ctrl+F</span></div>
+                            <div class="help-row"><span>Quick log picker</span><span class="help-key">Ctrl+P</span></div>
+                            <div class="help-row"><span>Previous/Next log</span><span class="help-key">Alt+↑/↓</span></div>
+                            <div class="help-row"><span>Toggle pin</span><span class="help-key">Alt+P</span></div>
+                        </div>
+                        <div class="help-section">
+                            <div class="help-section-title">Scrolling</div>
+                            <div class="help-row"><span>Scroll up/down</span><span class="help-key">↑/↓</span></div>
+                            <div class="help-row"><span>Page up/down</span><span class="help-key">PgUp/PgDn</span></div>
+                            <div class="help-row"><span>Go to start/end</span><span class="help-key">Home/End</span></div>
+                        </div>
+                        <div class="help-section">
+                            <div class="help-section-title">Search</div>
+                            <div class="help-row"><span>Next match</span><span class="help-key">Enter</span></div>
+                            <div class="help-row"><span>Previous match</span><span class="help-key">Shift+Enter</span></div>
+                        </div>
+                        <div class="help-section">
+                            <div class="help-section-title">General</div>
+                            <div class="help-row"><span>Show this help</span><span class="help-key">? / F1</span></div>
+                            <div class="help-row"><span>Close panel/dialog</span><span class="help-key">Esc</span></div>
+                        </div>
+                    </div>
+                </div>
 
                 <script>
                     const vscode = acquireVsCodeApi();
@@ -800,6 +896,10 @@ export class LogViewerPanel {
                     const quickPickerOverlay = document.getElementById('quick-picker-overlay');
                     const quickPickerInput = document.getElementById('quick-picker-input');
                     const quickPickerList = document.getElementById('quick-picker-list');
+                    
+                    // Help panel elements
+                    const helpOverlay = document.getElementById('help-overlay');
+                    const helpClose = document.getElementById('help-close');
 
                     const defaultSeverities = ['log-error', 'log-warn', 'log-info', 'log-debug', 'log-trace', 'log-verbose'];
 
@@ -1179,6 +1279,22 @@ export class LogViewerPanel {
                         }
                     });
 
+                    // Help panel functions
+                    function openHelp() {
+                        helpOverlay.classList.add('visible');
+                    }
+
+                    function closeHelp() {
+                        helpOverlay.classList.remove('visible');
+                    }
+
+                    helpClose.addEventListener('click', closeHelp);
+                    helpOverlay.addEventListener('click', (e) => {
+                        if (e.target === helpOverlay) {
+                            closeHelp();
+                        }
+                    });
+
                     // Get logs in visual order (pinned first, then rest)
                     function getLogsInVisualOrder() {
                         const pinnedSet = new Set(pinnedLogs);
@@ -1292,9 +1408,18 @@ export class LogViewerPanel {
                             return;
                         }
                         
+                        // ? or F1 - Show help (only when not in input)
+                        if ((e.key === '?' || e.key === 'F1') && !isInputFocused) {
+                            e.preventDefault();
+                            openHelp();
+                            return;
+                        }
+                        
                         // Escape - Close modals
                         if (e.key === 'Escape') {
-                            if (quickPickerOverlay.classList.contains('visible')) {
+                            if (helpOverlay.classList.contains('visible')) {
+                                closeHelp();
+                            } else if (quickPickerOverlay.classList.contains('visible')) {
                                 closeQuickPicker();
                             } else if (searchBar.classList.contains('visible')) {
                                 closeSearch();

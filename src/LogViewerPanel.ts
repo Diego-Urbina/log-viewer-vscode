@@ -438,6 +438,8 @@ export class LogViewerPanel {
                         overflow: hidden;
                         display: flex;
                         flex-direction: column;
+                        position: relative;
+                        outline: none;
                     }
                     
                     /* Current log header */
@@ -584,6 +586,157 @@ export class LogViewerPanel {
                     /* Settings-based styles */
                     #log-content.hide-line-numbers .line-number { display: none; }
                     #log-content.no-wrap .line-content { white-space: pre; word-break: normal; }
+                    
+                    /* Search bar */
+                    .search-bar {
+                        display: none;
+                        position: absolute;
+                        top: 8px;
+                        right: 20px;
+                        background: var(--vscode-editorWidget-background, #252526);
+                        border: 1px solid var(--vscode-editorWidget-border, #454545);
+                        border-radius: 4px;
+                        padding: 4px 8px;
+                        z-index: 100;
+                        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+                        align-items: center;
+                        gap: 6px;
+                    }
+                    .search-bar.visible { display: flex; }
+                    .search-bar input {
+                        background: var(--vscode-input-background);
+                        color: var(--vscode-input-foreground);
+                        border: 1px solid var(--vscode-input-border, transparent);
+                        padding: 3px 6px;
+                        font-size: 12px;
+                        width: 200px;
+                        outline: none;
+                    }
+                    .search-bar input:focus {
+                        border-color: var(--vscode-focusBorder);
+                    }
+                    .search-nav-btn {
+                        background: transparent;
+                        border: none;
+                        color: var(--vscode-foreground);
+                        cursor: pointer;
+                        padding: 2px 6px;
+                        font-size: 14px;
+                        opacity: 0.7;
+                    }
+                    .search-nav-btn:hover { opacity: 1; }
+                    .search-nav-btn:disabled { opacity: 0.3; cursor: default; }
+                    .search-count {
+                        font-size: 11px;
+                        color: var(--vscode-descriptionForeground);
+                        min-width: 60px;
+                        text-align: center;
+                    }
+                    .search-close {
+                        background: transparent;
+                        border: none;
+                        color: var(--vscode-foreground);
+                        cursor: pointer;
+                        padding: 2px 6px;
+                        font-size: 16px;
+                        opacity: 0.7;
+                    }
+                    .search-close:hover { opacity: 1; }
+                    
+                    /* Search highlight */
+                    .search-highlight {
+                        background: var(--vscode-editor-findMatchHighlightBackground, rgba(234, 92, 0, 0.33));
+                        border-radius: 2px;
+                    }
+                    .search-highlight.current {
+                        background: var(--vscode-editor-findMatchBackground, rgba(255, 213, 0, 0.6));
+                        outline: 1px solid var(--vscode-editor-findMatchBorder, #ffcc00);
+                    }
+                    
+                    /* Quick Picker (Ctrl+P) */
+                    .quick-picker-overlay {
+                        display: none;
+                        position: fixed;
+                        top: 0;
+                        left: 0;
+                        right: 0;
+                        bottom: 0;
+                        background: rgba(0, 0, 0, 0.4);
+                        z-index: 200;
+                    }
+                    .quick-picker-overlay.visible { display: block; }
+                    .quick-picker {
+                        position: absolute;
+                        top: 20%;
+                        left: 50%;
+                        transform: translateX(-50%);
+                        width: 500px;
+                        max-width: 90%;
+                        background: var(--vscode-quickInput-background, #252526);
+                        border: 1px solid var(--vscode-editorWidget-border, #454545);
+                        border-radius: 6px;
+                        box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+                        overflow: hidden;
+                    }
+                    .quick-picker-input {
+                        width: 100%;
+                        padding: 10px 12px;
+                        background: var(--vscode-input-background);
+                        color: var(--vscode-input-foreground);
+                        border: none;
+                        border-bottom: 1px solid var(--vscode-editorWidget-border, #454545);
+                        font-size: 14px;
+                        outline: none;
+                        box-sizing: border-box;
+                    }
+                    .quick-picker-input::placeholder {
+                        color: var(--vscode-input-placeholderForeground);
+                    }
+                    .quick-picker-list {
+                        max-height: 300px;
+                        overflow-y: auto;
+                    }
+                    .quick-picker-item {
+                        display: flex;
+                        align-items: center;
+                        padding: 6px 12px;
+                        cursor: pointer;
+                        gap: 8px;
+                    }
+                    .quick-picker-item:hover,
+                    .quick-picker-item.selected {
+                        background: var(--vscode-list-hoverBackground, #2a2d2e);
+                    }
+                    .quick-picker-item.selected {
+                        background: var(--vscode-list-activeSelectionBackground, #094771);
+                        color: var(--vscode-list-activeSelectionForeground, #fff);
+                    }
+                    .quick-picker-item .pin-icon {
+                        width: 14px;
+                        height: 14px;
+                        fill: var(--vscode-foreground);
+                        opacity: 0.6;
+                    }
+                    .quick-picker-item.selected .pin-icon {
+                        fill: var(--vscode-list-activeSelectionForeground, #fff);
+                    }
+                    .quick-picker-item .log-name {
+                        flex: 1;
+                    }
+                    .quick-picker-item .log-badge {
+                        font-size: 11px;
+                        opacity: 0.7;
+                        padding: 1px 6px;
+                        background: var(--vscode-badge-background);
+                        color: var(--vscode-badge-foreground);
+                        border-radius: 10px;
+                    }
+                    .quick-picker-empty {
+                        padding: 12px;
+                        text-align: center;
+                        color: var(--vscode-descriptionForeground);
+                        font-style: italic;
+                    }
                 </style>
             </head>
             <body>
@@ -599,7 +752,7 @@ export class LogViewerPanel {
                     <div class="log-section" id="all-logs"></div>
                 </div>
                 
-                <div class="main-area">
+                <div class="main-area" id="main-area" tabindex="-1">
                     <div class="log-header">
                         <span class="log-title" id="current-log-title">Select a log</span>
                     </div>
@@ -618,6 +771,23 @@ export class LogViewerPanel {
                         </div>
                     </div>
                     <div id="log-content"><div class="empty-state">Select a log from the sidebar</div></div>
+                    
+                    <!-- Search bar (Ctrl+F) -->
+                    <div class="search-bar" id="search-bar">
+                        <input type="text" id="search-input" placeholder="Find in log...">
+                        <span class="search-count" id="search-count"></span>
+                        <button class="search-nav-btn" id="search-prev" title="Previous (Shift+Enter)">▲</button>
+                        <button class="search-nav-btn" id="search-next" title="Next (Enter)">▼</button>
+                        <button class="search-close" id="search-close" title="Close (Esc)">×</button>
+                    </div>
+                </div>
+                
+                <!-- Quick Picker (Ctrl+P) -->
+                <div class="quick-picker-overlay" id="quick-picker-overlay">
+                    <div class="quick-picker">
+                        <input type="text" class="quick-picker-input" id="quick-picker-input" placeholder="Select log...">
+                        <div class="quick-picker-list" id="quick-picker-list"></div>
+                    </div>
                 </div>
 
                 <script>
@@ -634,6 +804,19 @@ export class LogViewerPanel {
                     const filterTextInput = document.getElementById('filter-text');
                     const filterClearBtn = document.getElementById('filter-clear');
                     const severityButtons = document.querySelectorAll('.severity-btn');
+                    
+                    // Search elements
+                    const searchBar = document.getElementById('search-bar');
+                    const searchInput = document.getElementById('search-input');
+                    const searchCount = document.getElementById('search-count');
+                    const searchPrev = document.getElementById('search-prev');
+                    const searchNext = document.getElementById('search-next');
+                    const searchClose = document.getElementById('search-close');
+                    
+                    // Quick Picker elements
+                    const quickPickerOverlay = document.getElementById('quick-picker-overlay');
+                    const quickPickerInput = document.getElementById('quick-picker-input');
+                    const quickPickerList = document.getElementById('quick-picker-list');
 
                     const defaultSeverities = ['log-error', 'log-warn', 'log-info', 'log-debug', 'log-trace', 'log-verbose'];
 
@@ -647,6 +830,14 @@ export class LogViewerPanel {
                     let logFilters = previousState.logFilters || {}; // { logName: { text: '', severities: [...] } }
                     let tailMode = false; // Will be updated from settings
                     let logLineCounts = {}; // Track line count per log for incremental updates
+                    
+                    // Search state
+                    let searchMatches = [];
+                    let currentMatchIndex = -1;
+                    
+                    // Quick Picker state
+                    let pickerSelectedIndex = 0;
+                    let pickerFilteredLogs = [];
 
                     // Get current log's filter settings
                     function getLogFilter(logName) {
@@ -768,6 +959,321 @@ export class LogViewerPanel {
                         }
                         return '';
                     }
+
+                    // Search functions
+                    function openSearch() {
+                        searchBar.classList.add('visible');
+                        searchInput.focus();
+                        searchInput.select();
+                    }
+
+                    function closeSearch() {
+                        searchBar.classList.remove('visible');
+                        clearSearchHighlights();
+                        searchInput.value = '';
+                        searchCount.textContent = '';
+                        searchMatches = [];
+                        currentMatchIndex = -1;
+                    }
+
+                    function clearSearchHighlights() {
+                        const highlights = logContent.querySelectorAll('.search-highlight');
+                        highlights.forEach(el => {
+                            const parent = el.parentNode;
+                            parent.replaceChild(document.createTextNode(el.textContent), el);
+                            parent.normalize();
+                        });
+                    }
+
+                    function performSearch() {
+                        const query = searchInput.value;
+                        clearSearchHighlights();
+                        searchMatches = [];
+                        currentMatchIndex = -1;
+
+                        if (!query) {
+                            searchCount.textContent = '';
+                            updateSearchNavButtons();
+                            return;
+                        }
+
+                        const lineContents = logContent.querySelectorAll('.line-content');
+                        const queryLower = query.toLowerCase();
+
+                        lineContents.forEach(lineEl => {
+                            const text = lineEl.textContent;
+                            const textLower = text.toLowerCase();
+                            let lastIndex = 0;
+                            let index;
+                            const fragments = [];
+                            
+                            while ((index = textLower.indexOf(queryLower, lastIndex)) !== -1) {
+                                // Add text before match
+                                if (index > lastIndex) {
+                                    fragments.push(document.createTextNode(text.substring(lastIndex, index)));
+                                }
+                                // Add highlighted match
+                                const span = document.createElement('span');
+                                span.className = 'search-highlight';
+                                span.textContent = text.substring(index, index + query.length);
+                                fragments.push(span);
+                                searchMatches.push(span);
+                                lastIndex = index + query.length;
+                            }
+                            
+                            // Add remaining text
+                            if (fragments.length > 0) {
+                                if (lastIndex < text.length) {
+                                    fragments.push(document.createTextNode(text.substring(lastIndex)));
+                                }
+                                lineEl.textContent = '';
+                                fragments.forEach(f => lineEl.appendChild(f));
+                            }
+                        });
+
+                        if (searchMatches.length > 0) {
+                            searchCount.textContent = searchMatches.length + ' matches';
+                            goToMatch(0);
+                        } else {
+                            searchCount.textContent = 'No results';
+                        }
+                        updateSearchNavButtons();
+                    }
+
+                    function goToMatch(index) {
+                        if (searchMatches.length === 0) return;
+                        
+                        // Remove current highlight
+                        if (currentMatchIndex >= 0 && currentMatchIndex < searchMatches.length) {
+                            searchMatches[currentMatchIndex].classList.remove('current');
+                        }
+                        
+                        currentMatchIndex = index;
+                        if (currentMatchIndex < 0) currentMatchIndex = searchMatches.length - 1;
+                        if (currentMatchIndex >= searchMatches.length) currentMatchIndex = 0;
+                        
+                        const match = searchMatches[currentMatchIndex];
+                        match.classList.add('current');
+                        match.scrollIntoView({ block: 'center', behavior: 'smooth' });
+                        
+                        searchCount.textContent = (currentMatchIndex + 1) + ' of ' + searchMatches.length;
+                        updateSearchNavButtons();
+                    }
+
+                    function goToNextMatch() {
+                        goToMatch(currentMatchIndex + 1);
+                    }
+
+                    function goToPrevMatch() {
+                        goToMatch(currentMatchIndex - 1);
+                    }
+
+                    function updateSearchNavButtons() {
+                        const hasMatches = searchMatches.length > 0;
+                        searchPrev.disabled = !hasMatches;
+                        searchNext.disabled = !hasMatches;
+                    }
+
+                    // Search event listeners
+                    searchInput.addEventListener('input', () => {
+                        performSearch();
+                    });
+
+                    searchInput.addEventListener('keydown', (e) => {
+                        if (e.key === 'Enter') {
+                            e.preventDefault();
+                            if (e.shiftKey) {
+                                goToPrevMatch();
+                            } else {
+                                goToNextMatch();
+                            }
+                        } else if (e.key === 'Escape') {
+                            closeSearch();
+                        }
+                    });
+
+                    searchNext.addEventListener('click', goToNextMatch);
+                    searchPrev.addEventListener('click', goToPrevMatch);
+                    searchClose.addEventListener('click', closeSearch);
+
+                    // Quick Picker functions
+                    function openQuickPicker() {
+                        pickerSelectedIndex = 0;
+                        quickPickerInput.value = '';
+                        updatePickerList();
+                        quickPickerOverlay.classList.add('visible');
+                        quickPickerInput.focus();
+                    }
+
+                    function closeQuickPicker() {
+                        quickPickerOverlay.classList.remove('visible');
+                    }
+
+                    function updatePickerList() {
+                        const query = quickPickerInput.value.toLowerCase();
+                        
+                        // Get all logs, pinned first
+                        const pinnedSet = new Set(pinnedLogs);
+                        const sortedLogs = [
+                            ...pinnedLogs.filter(log => allLogs.includes(log)),
+                            ...allLogs.filter(log => !pinnedSet.has(log))
+                        ];
+                        
+                        // Filter by query
+                        pickerFilteredLogs = query 
+                            ? sortedLogs.filter(log => log.toLowerCase().includes(query))
+                            : sortedLogs;
+                        
+                        // Clamp selected index
+                        if (pickerSelectedIndex >= pickerFilteredLogs.length) {
+                            pickerSelectedIndex = Math.max(0, pickerFilteredLogs.length - 1);
+                        }
+                        
+                        // Render list
+                        if (pickerFilteredLogs.length === 0) {
+                            quickPickerList.innerHTML = '<div class="quick-picker-empty">No matching logs</div>';
+                            return;
+                        }
+                        
+                        quickPickerList.innerHTML = pickerFilteredLogs.map((log, index) => {
+                            const isPinned = pinnedLogs.includes(log);
+                            const isActive = log === activeLog;
+                            const isSelected = index === pickerSelectedIndex;
+                            
+                            return '<div class="quick-picker-item' + (isSelected ? ' selected' : '') + '" data-index="' + index + '">' +
+                                (isPinned ? '<svg class="pin-icon" viewBox="0 0 16 16"><path d="M11.5 1.5L10.793 2.207L11.793 3.207L8.5 6.5L5 4.5L3.5 6L7.793 9.293L2.5 14.586V15.5H3.414L8.707 10.207L12 14.5L13.5 13L11.5 9.5L14.793 6.207L15.793 7.207L16.5 6.5L11.5 1.5Z"/></svg>' : '') +
+                                '<span class="log-name">' + log + '</span>' +
+                                (isActive ? '<span class="log-badge">active</span>' : '') +
+                                '</div>';
+                        }).join('');
+                        
+                        // Scroll selected into view
+                        const selectedEl = quickPickerList.querySelector('.selected');
+                        if (selectedEl) {
+                            selectedEl.scrollIntoView({ block: 'nearest' });
+                        }
+                    }
+
+                    function pickerSelectCurrent() {
+                        if (pickerFilteredLogs.length > 0 && pickerSelectedIndex >= 0) {
+                            const log = pickerFilteredLogs[pickerSelectedIndex];
+                            selectLog(log);
+                            closeQuickPicker();
+                        }
+                    }
+
+                    // Quick Picker event listeners
+                    quickPickerInput.addEventListener('input', () => {
+                        pickerSelectedIndex = 0;
+                        updatePickerList();
+                    });
+
+                    quickPickerInput.addEventListener('keydown', (e) => {
+                        if (e.key === 'ArrowDown') {
+                            e.preventDefault();
+                            pickerSelectedIndex = Math.min(pickerSelectedIndex + 1, pickerFilteredLogs.length - 1);
+                            updatePickerList();
+                        } else if (e.key === 'ArrowUp') {
+                            e.preventDefault();
+                            pickerSelectedIndex = Math.max(pickerSelectedIndex - 1, 0);
+                            updatePickerList();
+                        } else if (e.key === 'Enter') {
+                            e.preventDefault();
+                            pickerSelectCurrent();
+                        } else if (e.key === 'Escape') {
+                            closeQuickPicker();
+                        }
+                    });
+
+                    quickPickerList.addEventListener('click', (e) => {
+                        const item = e.target.closest('.quick-picker-item');
+                        if (item) {
+                            const index = parseInt(item.dataset.index);
+                            pickerSelectedIndex = index;
+                            pickerSelectCurrent();
+                        }
+                    });
+
+                    quickPickerOverlay.addEventListener('click', (e) => {
+                        if (e.target === quickPickerOverlay) {
+                            closeQuickPicker();
+                        }
+                    });
+
+                    // Get logs in visual order (pinned first, then rest)
+                    function getLogsInVisualOrder() {
+                        const pinnedSet = new Set(pinnedLogs);
+                        return [
+                            ...pinnedLogs.filter(log => allLogs.includes(log)),
+                            ...allLogs.filter(log => !pinnedSet.has(log))
+                        ];
+                    }
+
+                    // Navigate to previous/next log
+                    function goToPrevLog() {
+                        const visualLogs = getLogsInVisualOrder();
+                        if (visualLogs.length === 0) return;
+                        const currentIndex = visualLogs.indexOf(activeLog);
+                        const newIndex = currentIndex <= 0 ? visualLogs.length - 1 : currentIndex - 1;
+                        selectLog(visualLogs[newIndex]);
+                    }
+
+                    function goToNextLog() {
+                        const visualLogs = getLogsInVisualOrder();
+                        if (visualLogs.length === 0) return;
+                        const currentIndex = visualLogs.indexOf(activeLog);
+                        const newIndex = currentIndex >= visualLogs.length - 1 ? 0 : currentIndex + 1;
+                        selectLog(visualLogs[newIndex]);
+                    }
+
+                    // Global keyboard shortcuts
+                    document.addEventListener('keydown', (e) => {
+                        // Ctrl+F - Search
+                        if ((e.ctrlKey || e.metaKey) && e.key === 'f') {
+                            e.preventDefault();
+                            openSearch();
+                            return;
+                        }
+                        
+                        // Ctrl+P - Quick Picker
+                        if ((e.ctrlKey || e.metaKey) && e.key === 'p') {
+                            e.preventDefault();
+                            openQuickPicker();
+                            return;
+                        }
+                        
+                        // Alt+ArrowUp - Previous log
+                        if (e.altKey && e.key === 'ArrowUp') {
+                            e.preventDefault();
+                            goToPrevLog();
+                            return;
+                        }
+                        
+                        // Alt+ArrowDown - Next log
+                        if (e.altKey && e.key === 'ArrowDown') {
+                            e.preventDefault();
+                            goToNextLog();
+                            return;
+                        }
+                        
+                        // Alt+P - Toggle pin on current log
+                        if (e.altKey && e.key === 'p') {
+                            e.preventDefault();
+                            if (activeLog) {
+                                togglePin(activeLog);
+                            }
+                            return;
+                        }
+                        
+                        // Escape - Close modals
+                        if (e.key === 'Escape') {
+                            if (quickPickerOverlay.classList.contains('visible')) {
+                                closeQuickPicker();
+                            } else if (searchBar.classList.contains('visible')) {
+                                closeSearch();
+                            }
+                        }
+                    });
 
                     function escapeHtml(text) {
                         const div = document.createElement('div');
@@ -1157,6 +1663,9 @@ export class LogViewerPanel {
                     if (activeLog) {
                         updateFilterUI();
                     }
+                    
+                    // Focus main area for keyboard shortcuts
+                    document.getElementById('main-area').focus();
                 </script>
             </body>
             </html>`;

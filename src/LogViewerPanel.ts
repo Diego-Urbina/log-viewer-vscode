@@ -1112,12 +1112,8 @@ export class LogViewerPanel {
                     function updatePickerList() {
                         const query = quickPickerInput.value.toLowerCase();
                         
-                        // Get all logs, pinned first
-                        const pinnedSet = new Set(pinnedLogs);
-                        const sortedLogs = [
-                            ...pinnedLogs.filter(log => allLogs.includes(log)),
-                            ...allLogs.filter(log => !pinnedSet.has(log))
-                        ];
+                        // Get all logs in visual order (pinned first)
+                        const sortedLogs = getLogsInVisualOrder();
                         
                         // Filter by query
                         pickerFilteredLogs = query 
@@ -1531,7 +1527,7 @@ export class LogViewerPanel {
                                     // Otherwise, select newest session (first in list, already sorted newest first)
                                     sessionSelect.value = message.sessions[0];
                                     currentSession = message.sessions[0];
-                                    vscode.postMessage({ command: 'getLogsForSession', session: '__root__' });
+                                    vscode.postMessage({ command: 'getLogsForSession', session: currentSession });
                                 }
                                 break;
                                 
@@ -1621,13 +1617,6 @@ export class LogViewerPanel {
                                 saveState();
                                 break;
                                 
-                            case 'fileChanged':
-                                // Auto-refresh changed log (single file - legacy)
-                                if (allLogs.includes(message.filename)) {
-                                    vscode.postMessage({ command: 'getLogContent', session: currentSession, logName: message.filename });
-                                }
-                                break;
-                            
                             case 'filesChanged':
                                 // Auto-refresh changed logs (batch - debounced)
                                 if (message.filenames && Array.isArray(message.filenames)) {

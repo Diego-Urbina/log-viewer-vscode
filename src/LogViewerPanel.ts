@@ -1248,32 +1248,37 @@ export class LogViewerPanel {
                         const scrollAmount = 40; // pixels per arrow key
                         const pageAmount = logContent.clientHeight - 50; // page scroll minus a bit for context
                         
-                        if (e.key === 'ArrowUp' && !e.altKey && !e.ctrlKey && !e.metaKey) {
+                        // Skip navigation keys when focus is on an input element
+                        const isInputFocused = document.activeElement && 
+                            (document.activeElement.tagName === 'INPUT' || 
+                             document.activeElement.tagName === 'TEXTAREA');
+                        
+                        if (e.key === 'ArrowUp' && !e.altKey && !e.ctrlKey && !e.metaKey && !isInputFocused) {
                             e.preventDefault();
                             logContent.scrollTop -= scrollAmount;
                             return;
                         }
-                        if (e.key === 'ArrowDown' && !e.altKey && !e.ctrlKey && !e.metaKey) {
+                        if (e.key === 'ArrowDown' && !e.altKey && !e.ctrlKey && !e.metaKey && !isInputFocused) {
                             e.preventDefault();
                             logContent.scrollTop += scrollAmount;
                             return;
                         }
-                        if (e.key === 'PageUp') {
+                        if (e.key === 'PageUp' && !isInputFocused) {
                             e.preventDefault();
                             logContent.scrollTop -= pageAmount;
                             return;
                         }
-                        if (e.key === 'PageDown') {
+                        if (e.key === 'PageDown' && !isInputFocused) {
                             e.preventDefault();
                             logContent.scrollTop += pageAmount;
                             return;
                         }
-                        if (e.key === 'Home' && !e.ctrlKey) {
+                        if (e.key === 'Home' && !e.ctrlKey && !isInputFocused) {
                             e.preventDefault();
                             logContent.scrollTop = 0;
                             return;
                         }
-                        if (e.key === 'End' && !e.ctrlKey) {
+                        if (e.key === 'End' && !e.ctrlKey && !isInputFocused) {
                             e.preventDefault();
                             logContent.scrollTop = logContent.scrollHeight;
                             return;

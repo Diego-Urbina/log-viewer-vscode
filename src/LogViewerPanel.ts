@@ -1214,6 +1214,14 @@ export class LogViewerPanel {
                             return;
                         }
                         
+                        // Ctrl+L - Focus filter bar
+                        if ((e.ctrlKey || e.metaKey) && e.key === 'l') {
+                            e.preventDefault();
+                            filterTextInput.focus();
+                            filterTextInput.select();
+                            return;
+                        }
+                        
                         // Ctrl+P - Quick Picker
                         if ((e.ctrlKey || e.metaKey) && e.key === 'p') {
                             e.preventDefault();

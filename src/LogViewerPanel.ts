@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import * as fs from 'fs';
 import * as path from 'path';
+import { stripAnsiCodes, matchesFilePattern } from './utils';
 
 export class LogViewerPanel {
     public static currentPanel: LogViewerPanel | undefined;
@@ -137,26 +138,8 @@ export class LogViewerPanel {
         };
     }
 
-    private _stripAnsiCodes(text: string): string {
-        // Remove ANSI escape codes (colors, formatting, cursor control, etc.)
-        // eslint-disable-next-line no-control-regex
-        return text.replace(/\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])/g, '');
-    }
-
     private _matchesFilePattern(filename: string): boolean {
-        const patterns = this._getConfig().filePattern;
-        // Support multiple patterns separated by comma
-        const patternList = patterns.split(',').map(p => p.trim()).filter(p => p);
-        
-        return patternList.some(pattern => {
-            // Convert glob pattern to regex
-            const regexPattern = pattern
-                .replace(/\./g, '\\.')
-                .replace(/\*/g, '.*')
-                .replace(/\?/g, '.');
-            const regex = new RegExp(`^${regexPattern}$`, 'i');
-            return regex.test(filename);
-        });
+        return matchesFilePattern(filename, this._getConfig().filePattern);
     }
 
     private _getLogDirectoryName(): string {
@@ -1757,7 +1740,7 @@ export class LogViewerPanel {
         if (fs.existsSync(logPath)) {
             let content = fs.readFileSync(logPath, 'utf8');
             if (this._getConfig().stripAnsiCodes) {
-                content = this._stripAnsiCodes(content);
+                content = stripAnsiCodes(content);
             }
             this._panel.webview.postMessage({ 
                 command: 'setLogContent', 

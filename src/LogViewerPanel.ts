@@ -257,6 +257,8 @@ export class LogViewerPanel {
         }
         this._sessionRefreshTimer = setTimeout(() => {
             this._sendSessions();
+            // Also notify webview to refresh current session's logs
+            this._panel.webview.postMessage({ command: 'refreshCurrentSession' });
         }, LogViewerPanel.DEBOUNCE_DELAY * 2); // Slightly longer delay for sessions
     }
 
@@ -528,17 +530,17 @@ export class LogViewerPanel {
                         opacity: 1;
                     }
                     .severity-btn.error { border-color: var(--vscode-errorForeground, #f44747); }
-                    .severity-btn.error.active { background: var(--vscode-errorForeground, #f44747); color: #fff; }
+                    .severity-btn.error.active { background: var(--vscode-errorForeground, #f44747); color: #000; }
                     .severity-btn.warn { border-color: var(--vscode-editorWarning-foreground, #cca700); }
                     .severity-btn.warn.active { background: var(--vscode-editorWarning-foreground, #cca700); color: #000; }
                     .severity-btn.info { border-color: var(--vscode-editorInfo-foreground, #3794ff); }
-                    .severity-btn.info.active { background: var(--vscode-editorInfo-foreground, #3794ff); color: #fff; }
+                    .severity-btn.info.active { background: var(--vscode-editorInfo-foreground, #3794ff); color: #000; }
                     .severity-btn.debug { border-color: var(--vscode-debugTokenExpression-name, #9cdcfe); }
                     .severity-btn.debug.active { background: var(--vscode-debugTokenExpression-name, #9cdcfe); color: #000; }
                     .severity-btn.trace { border-color: var(--vscode-descriptionForeground, #808080); }
-                    .severity-btn.trace.active { background: var(--vscode-descriptionForeground, #808080); color: #fff; }
+                    .severity-btn.trace.active { background: var(--vscode-descriptionForeground, #808080); color: #000; }
                     .severity-btn.verbose { border-color: var(--vscode-descriptionForeground, #6a6a6a); }
-                    .severity-btn.verbose.active { background: var(--vscode-descriptionForeground, #6a6a6a); color: #fff; }
+                    .severity-btn.verbose.active { background: var(--vscode-descriptionForeground, #6a6a6a); color: #000; }
                     
                     /* Log content */
                     #log-content { 
@@ -644,6 +646,7 @@ export class LogViewerPanel {
                     let logContents = previousState.logContents || {}; // { logName: content }
                     let logFilters = previousState.logFilters || {}; // { logName: { text: '', severities: [...] } }
                     let tailMode = false; // Will be updated from settings
+                    let logLineCounts = {}; // Track line count per log for incremental updates
 
                     // Get current log's filter settings
                     function getLogFilter(logName) {
@@ -720,6 +723,50 @@ export class LogViewerPanel {
                         }
                         
                         return filteredLines.join('');
+                    }
+
+                    // Format only new lines for incremental append
+                    function formatNewLines(content, startLineNum, inheritedSeverity) {
+                        const filter = getLogFilter(activeLog);
+                        const lines = content.split('\\n');
+                        const searchText = filter.text.toLowerCase();
+                        let lastSeverityClass = inheritedSeverity || '';
+                        
+                        const filteredLines = lines.map((line, index) => {
+                            const lineNum = startLineNum + index;
+                            let severityClass = getSeverityClass(line);
+                            
+                            if (!severityClass && lastSeverityClass) {
+                                severityClass = lastSeverityClass;
+                            } else if (severityClass) {
+                                lastSeverityClass = severityClass;
+                            }
+                            
+                            if (severityClass && !filter.severities.includes(severityClass)) {
+                                return null;
+                            }
+                            
+                            if (searchText && !line.toLowerCase().includes(searchText)) {
+                                return null;
+                            }
+                            
+                            const escapedLine = escapeHtml(line);
+                            return '<span class="log-line ' + severityClass + '" data-line="' + lineNum + '"><span class="line-number">' + lineNum + '</span><span class="line-content">' + escapedLine + '</span></span>';
+                        }).filter(l => l !== null);
+                        
+                        return filteredLines.join('');
+                    }
+
+                    // Get the last severity class from displayed content
+                    function getLastDisplayedSeverity() {
+                        const lastLine = logContent.querySelector('.log-line:last-child');
+                        if (lastLine) {
+                            const classes = lastLine.className.split(' ');
+                            for (const cls of classes) {
+                                if (cls.startsWith('log-')) return cls;
+                            }
+                        }
+                        return '';
                     }
 
                     function escapeHtml(text) {
@@ -948,18 +995,34 @@ export class LogViewerPanel {
                                 break;
                                 
                             case 'setSessionLogs':
+                                const previousLogs = allLogs;
                                 allLogs = message.logs;
-                                logContents = {};
                                 
-                                // Request content for all logs
-                                allLogs.forEach(logName => {
+                                // Find new logs (not in previous list)
+                                const newLogs = allLogs.filter(log => !previousLogs.includes(log));
+                                
+                                // Remove content for logs that no longer exist
+                                const removedLogs = previousLogs.filter(log => !allLogs.includes(log));
+                                removedLogs.forEach(log => {
+                                    delete logContents[log];
+                                    delete logFilters[log];
+                                    // Remove from pinned if it was pinned
+                                    const pinIndex = pinnedLogs.indexOf(log);
+                                    if (pinIndex > -1) {
+                                        pinnedLogs.splice(pinIndex, 1);
+                                    }
+                                });
+                                
+                                // Request content only for new logs
+                                newLogs.forEach(logName => {
                                     vscode.postMessage({ command: 'getLogContent', session: currentSession, logName });
                                 });
                                 
-                                // Select first log if none selected
-                                if (allLogs.length > 0 && !activeLog) {
+                                // Select first log if none selected or active log was removed
+                                if (allLogs.length > 0 && (!activeLog || !allLogs.includes(activeLog))) {
                                     selectLog(allLogs[0]);
                                 } else if (allLogs.length === 0) {
+                                    activeLog = '';
                                     logContent.innerHTML = '<div class="empty-state">No logs in this session</div>';
                                 }
                                 
@@ -968,12 +1031,51 @@ export class LogViewerPanel {
                                 break;
                                 
                             case 'setLogContent':
-                                logContents[message.logName] = message.content;
+                                const prevContent = logContents[message.logName] || '';
+                                const newContent = message.content;
+                                logContents[message.logName] = newContent;
+                                
                                 if (activeLog === message.logName) {
-                                    logContent.innerHTML = formatLogContent(message.content);
-                                    if (tailMode) {
-                                        logContent.scrollTop = logContent.scrollHeight;
+                                    const prevLineCount = logLineCounts[message.logName] || 0;
+                                    const newLines = newContent.split('\\n');
+                                    const newLineCount = newLines.length;
+                                    
+                                    // Check if this is an append-only update (content starts with previous content)
+                                    const isAppendOnly = prevContent && newContent.startsWith(prevContent) && newLineCount > prevLineCount;
+                                    
+                                    if (isAppendOnly && prevLineCount > 0) {
+                                        // Incremental update: only add new lines
+                                        const appendContent = newLines.slice(prevLineCount - 1).join('\\n');
+                                        const inheritedSeverity = getLastDisplayedSeverity();
+                                        const newHtml = formatNewLines(appendContent, prevLineCount, inheritedSeverity);
+                                        
+                                        if (newHtml) {
+                                            // Remove the empty-state if present
+                                            const emptyState = logContent.querySelector('.empty-state');
+                                            if (emptyState) {
+                                                emptyState.remove();
+                                            }
+                                            
+                                            // Append new lines
+                                            logContent.insertAdjacentHTML('beforeend', newHtml);
+                                        }
+                                        
+                                        if (tailMode) {
+                                            logContent.scrollTop = logContent.scrollHeight;
+                                        }
+                                    } else {
+                                        // Full refresh (new log, filter changed, or content was truncated)
+                                        const scrollTop = logContent.scrollTop;
+                                        logContent.innerHTML = formatLogContent(newContent);
+                                        
+                                        if (tailMode) {
+                                            logContent.scrollTop = logContent.scrollHeight;
+                                        } else {
+                                            logContent.scrollTop = scrollTop;
+                                        }
                                     }
+                                    
+                                    logLineCounts[message.logName] = newLineCount;
                                 }
                                 saveState();
                                 break;
@@ -1038,6 +1140,13 @@ export class LogViewerPanel {
                                 allLogs.forEach(logName => {
                                     vscode.postMessage({ command: 'getLogContent', session: currentSession, logName: logName });
                                 });
+                                break;
+                                
+                            case 'refreshCurrentSession':
+                                // Refresh the logs list for current session (detects new files)
+                                if (currentSession) {
+                                    vscode.postMessage({ command: 'getLogsForSession', session: currentSession });
+                                }
                                 break;
                         }
                     });

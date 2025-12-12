@@ -1265,6 +1265,41 @@ export class LogViewerPanel {
                             return;
                         }
                         
+                        // Arrow keys and Page Up/Down for log content navigation
+                        const scrollAmount = 40; // pixels per arrow key
+                        const pageAmount = logContent.clientHeight - 50; // page scroll minus a bit for context
+                        
+                        if (e.key === 'ArrowUp' && !e.altKey && !e.ctrlKey && !e.metaKey) {
+                            e.preventDefault();
+                            logContent.scrollTop -= scrollAmount;
+                            return;
+                        }
+                        if (e.key === 'ArrowDown' && !e.altKey && !e.ctrlKey && !e.metaKey) {
+                            e.preventDefault();
+                            logContent.scrollTop += scrollAmount;
+                            return;
+                        }
+                        if (e.key === 'PageUp') {
+                            e.preventDefault();
+                            logContent.scrollTop -= pageAmount;
+                            return;
+                        }
+                        if (e.key === 'PageDown') {
+                            e.preventDefault();
+                            logContent.scrollTop += pageAmount;
+                            return;
+                        }
+                        if (e.key === 'Home' && !e.ctrlKey) {
+                            e.preventDefault();
+                            logContent.scrollTop = 0;
+                            return;
+                        }
+                        if (e.key === 'End' && !e.ctrlKey) {
+                            e.preventDefault();
+                            logContent.scrollTop = logContent.scrollHeight;
+                            return;
+                        }
+                        
                         // Escape - Close modals
                         if (e.key === 'Escape') {
                             if (quickPickerOverlay.classList.contains('visible')) {

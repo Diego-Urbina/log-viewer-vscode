@@ -25,3 +25,6 @@ Thumbs.db
 
 # Debug
 .vscode-test/
+
+# Coverage
+coverage/

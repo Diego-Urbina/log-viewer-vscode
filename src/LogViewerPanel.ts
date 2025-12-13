@@ -1,7 +1,8 @@
 import * as vscode from 'vscode';
 import * as fs from 'fs';
 import * as path from 'path';
-import { stripAnsiCodes, matchesFilePattern } from './utils';
+import { matchesFilePattern } from './utils';
+import { LogDataProvider } from './LogDataProvider';
 
 export class LogViewerPanel {
     public static currentPanel: LogViewerPanel | undefined;
@@ -9,6 +10,7 @@ export class LogViewerPanel {
 
     private readonly _panel: vscode.WebviewPanel;
     private readonly _extensionUri: vscode.Uri;
+    private readonly _dataProvider: LogDataProvider;
     private _disposables: vscode.Disposable[] = [];
     private _fileWatcher: fs.FSWatcher | undefined;
     private _rootWatcher: fs.FSWatcher | undefined;
@@ -55,6 +57,7 @@ export class LogViewerPanel {
     private constructor(panel: vscode.WebviewPanel, extensionUri: vscode.Uri) {
         this._panel = panel;
         this._extensionUri = extensionUri;
+        this._dataProvider = new LogDataProvider();
 
         // Set the webview's initial html content
         this._update();
@@ -395,22 +398,9 @@ export class LogViewerPanel {
         const rootPath = vscode.workspace.workspaceFolders[0].uri.fsPath;
         const logDirName = this._getLogDirectoryName();
         const logDir = path.join(rootPath, logDirName);
+        const filePattern = this._getConfig().filePattern;
 
-        if (!fs.existsSync(logDir)) {
-            this._panel.webview.postMessage({ command: 'setSessions', sessions: [], hasRootLogs: false });
-            return;
-        }
-
-        const entries = fs.readdirSync(logDir, { withFileTypes: true });
-        
-        // Check for subdirectories (sessions)
-        const sessions = entries
-            .filter(e => e.isDirectory())
-            .map(e => e.name)
-            .sort((a, b) => b.localeCompare(a)); // Newest first (ISO8601 sorts correctly)
-        
-        // Check if there are log files directly in log/
-        const hasRootLogs = entries.some(e => e.isFile() && this._matchesFilePattern(e.name));
+        const { sessions, hasRootLogs } = this._dataProvider.getSessions(logDir, filePattern);
 
         this._panel.webview.postMessage({ command: 'setSessions', sessions, hasRootLogs });
     }
@@ -424,15 +414,9 @@ export class LogViewerPanel {
         const sessionDir = session === '__root__' 
             ? path.join(rootPath, logDirName)
             : path.join(rootPath, logDirName, session);
+        const filePattern = this._getConfig().filePattern;
 
-        if (!fs.existsSync(sessionDir)) {
-            this._panel.webview.postMessage({ command: 'setSessionLogs', logs: [], session });
-            return;
-        }
-
-        const logs = fs.readdirSync(sessionDir)
-            .filter(file => this._matchesFilePattern(file))
-            .sort((a, b) => a.localeCompare(b));
+        const logs = this._dataProvider.getLogs(sessionDir, filePattern);
 
         this._panel.webview.postMessage({ command: 'setSessionLogs', logs, session });
     }
@@ -447,11 +431,9 @@ export class LogViewerPanel {
             ? path.join(rootPath, logDirName, logName)
             : path.join(rootPath, logDirName, session, logName);
 
-        if (fs.existsSync(logPath)) {
-            let content = fs.readFileSync(logPath, 'utf8');
-            if (this._getConfig().stripAnsiCodes) {
-                content = stripAnsiCodes(content);
-            }
+        const content = this._dataProvider.getLogContent(logPath, this._getConfig().stripAnsiCodes);
+        
+        if (content !== null) {
             this._panel.webview.postMessage({ 
                 command: 'setLogContent', 
                 content: content,

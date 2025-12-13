@@ -55,7 +55,7 @@
                 "logViewer.tailMode": {
                     "type": "boolean",
                     "default": false,
-                    "description": "Auto-scroll to the end when new log content is loaded."
+                    "description": "Auto-scroll to the end when new log content is loaded. Only applies if you are already scrolled to the bottom."
                 },
                 "logViewer.stripAnsiCodes": {
                     "type": "boolean",

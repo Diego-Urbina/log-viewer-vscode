@@ -822,6 +822,9 @@ window.addEventListener('message', event => {
             logContents[message.logName] = newContent;
             
             if (activeLog === message.logName) {
+                // Check if user is near bottom (within 50px) before update
+                const isAtBottom = (logContent.scrollTop + logContent.clientHeight) >= (logContent.scrollHeight - 50);
+
                 const prevLineCount = logLineCounts[message.logName] || 0;
                 const newLines = newContent.split('\n');
                 const newLineCount = newLines.length;
@@ -846,7 +849,8 @@ window.addEventListener('message', event => {
                         logContent.insertAdjacentHTML('beforeend', newHtml);
                     }
                     
-                    if (tailMode) {
+                    // Only scroll to bottom if tailMode is ON AND we were already at the bottom
+                    if (tailMode && isAtBottom) {
                         logContent.scrollTop = logContent.scrollHeight;
                     }
                 } else {
@@ -854,7 +858,7 @@ window.addEventListener('message', event => {
                     const scrollTop = logContent.scrollTop;
                     logContent.innerHTML = formatLogContent(newContent);
                     
-                    if (tailMode) {
+                    if (tailMode && isAtBottom) {
                         logContent.scrollTop = logContent.scrollHeight;
                     } else {
                         logContent.scrollTop = scrollTop;

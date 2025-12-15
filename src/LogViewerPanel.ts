@@ -48,6 +48,10 @@ export class LogViewerPanel {
         LogViewerPanel.currentPanel = new LogViewerPanel(panel, extensionUri);
     }
 
+    public static revive(panel: vscode.WebviewPanel, extensionUri: vscode.Uri) {
+        LogViewerPanel.currentPanel = new LogViewerPanel(panel, extensionUri);
+    }
+
     public static close() {
         if (LogViewerPanel.currentPanel) {
             LogViewerPanel.currentPanel._panel.dispose();

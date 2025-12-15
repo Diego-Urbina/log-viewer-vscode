@@ -121,6 +121,14 @@ describe('LogViewerPanel', () => {
         expect(mockPanel.reveal).toHaveBeenCalled();
     });
 
+    test('revive should restore panel', () => {
+        LogViewerPanel.revive(mockPanel, extensionUri);
+        
+        expect(LogViewerPanel.currentPanel).toBeDefined();
+        // Should not create a new panel, just use the passed one
+        expect(vscode.window.createWebviewPanel).not.toHaveBeenCalled();
+    });
+
     test('dispose should clear currentPanel', () => {
         LogViewerPanel.createOrShow(extensionUri);
         expect(LogViewerPanel.currentPanel).toBeDefined();

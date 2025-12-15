@@ -17,6 +17,21 @@ export function activate(context: vscode.ExtensionContext) {
 			LogViewerPanel.close();
 		})
 	);
+
+	if (vscode.window.registerWebviewPanelSerializer) {
+		// Make sure we register a serializer in activation event
+		vscode.window.registerWebviewPanelSerializer(LogViewerPanel.viewType, {
+			async deserializeWebviewPanel(webviewPanel: vscode.WebviewPanel, state: any) {
+				console.log(`Got state: ${state}`);
+				// Reset the webview options so we use latest uri for `localResourceRoots`.
+				webviewPanel.webview.options = {
+					enableScripts: true,
+					localResourceRoots: [context.extensionUri]
+				};
+				LogViewerPanel.revive(webviewPanel, context.extensionUri);
+			}
+		});
+	}
 }
 
 export function deactivate() {}

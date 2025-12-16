@@ -166,6 +166,25 @@ describe('getSeverityClass', () => {
         });
     });
 
+    describe('key-value format level=LEVEL', () => {
+        it('should detect ERROR level', () => {
+            expect(getSeverityClass('time=... level=ERROR msg=...')).toBe('log-error');
+            expect(getSeverityClass('level=ERR msg=...')).toBe('log-error');
+        });
+
+        it('should detect INFO level', () => {
+            expect(getSeverityClass('time=... level=INFO msg=...')).toBe('log-info');
+        });
+
+        it('should detect DEBUG level', () => {
+            expect(getSeverityClass('time=... level=DEBUG msg=...')).toBe('log-debug');
+        });
+        
+        it('should detect WARN level', () => {
+            expect(getSeverityClass('time=... level=WARN msg=...')).toBe('log-warn');
+        });
+    });
+
     describe('no severity', () => {
         it('should return empty string for plain text', () => {
             expect(getSeverityClass('Just a regular line')).toBe('');

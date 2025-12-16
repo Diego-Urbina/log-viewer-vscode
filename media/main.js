@@ -587,6 +587,18 @@ function getSeverityClass(line) {
         if (/TRACE|TRC/.test(level)) return 'log-trace';
         if (/VERBOSE|VERB|VRB/.test(level)) return 'log-verbose';
     }
+
+    // Check for key-value format (e.g., "level=INFO", "level=ERROR")
+    const kvMatch = upperLine.match(/\bLEVEL\s*=\s*(ERROR|ERR|FATAL|CRITICAL|EXCEPTION|WARN|WARNING|INFO|DEBUG|DBG|TRACE|TRC|VERBOSE|VERB|VRB)\b/);
+    if (kvMatch) {
+        const level = kvMatch[1];
+        if (/ERROR|ERR|FATAL|CRITICAL|EXCEPTION/.test(level)) return 'log-error';
+        if (/WARN|WARNING/.test(level)) return 'log-warn';
+        if (level === 'INFO') return 'log-info';
+        if (/DEBUG|DBG/.test(level)) return 'log-debug';
+        if (/TRACE|TRC/.test(level)) return 'log-trace';
+        if (/VERBOSE|VERB|VRB/.test(level)) return 'log-verbose';
+    }
     
     return '';
 }

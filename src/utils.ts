@@ -55,6 +55,12 @@ export function getSeverityClass(line: string): SeverityClass {
     if (bracketMatch) {
         return mapLevelToClass(bracketMatch[1]);
     }
+
+    // Check for key-value format (e.g., "level=INFO", "level=ERROR")
+    const kvMatch = upperLine.match(/\bLEVEL\s*=\s*(ERROR|ERR|FATAL|CRITICAL|EXCEPTION|WARN|WARNING|INFO|DEBUG|DBG|TRACE|TRC|VERBOSE|VERB|VRB)\b/);
+    if (kvMatch) {
+        return mapLevelToClass(kvMatch[1]);
+    }
     
     return '';
 }
